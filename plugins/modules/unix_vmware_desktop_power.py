@@ -4,6 +4,7 @@ import base64
 import json
 import re
 import sys
+import os
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.urls import fetch_url
 
@@ -101,6 +102,24 @@ RETURN = r'''
 PY2 = sys.version_info[0] == 2
 PY3 = sys.version_info[0] == 3
 
+def is_running_on_wsl():
+    # Check for WSL-specific environment variables or files
+    return "microsoft" in os.uname().release.lower() or "wsl" in os.uname().version.lower()
+
+def windows_to_wsl_path(win_path):
+    # Remove trailing backslash if present
+    win_path = win_path.rstrip('\\')
+    # Split the drive letter and the rest of the path
+    if ':' in win_path:
+        drive, path = win_path.split(':', 1)
+        drive = drive.lower()
+        # Replace backslashes with forward slashes
+        wsl_path = f"/mnt/{drive}/{path.replace('\\', '/')}"
+        return wsl_path
+    else:
+        # If no drive letter, assume it's already a WSL path
+        return win_path.replace('\\', '/')
+
 def run_module():
     module_args = dict(
         username=dict(type='str', required=True),
@@ -149,7 +168,7 @@ def run_module():
         responsename = json.loads(reqname.read())
 
         for vm in responsename:
-            currentvmx = vm['path']
+            currentvmx = vm['path'] if not is_running_on_wsl() else windows_to_wsl_path(vm['path'])
             with open(currentvmx, 'r') as vmx:
                 for line in vmx:
                     if re.search(r'^displayName', line):
